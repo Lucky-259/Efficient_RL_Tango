@@ -7,7 +7,7 @@ conda activate tango
 ```
 然后在虚拟环境中执行setup.py安装所需要的库：
 ```bash
-cd rl-tango
+cd Efficient_RL_Tango
 pip install .
 ```
 之后安装vllm、ninja和flash-attn这三个库：
