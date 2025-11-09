@@ -64,7 +64,94 @@ wget -P ./data/TableBench https://huggingface.co/datasets/Multilingual-Multimoda
 python data_preprocess/prepare_eval_benchmarks.py
 ```
 
-## 训练
+## 训练（单节点）
+### Stage1 – SFT训练LLM和LRM
+#### 产生用于sft LLM的数据
+运行以下代码，先产生sft的数据：
+先运行以下命令：
+```bash
+# export on all nodes before starting ray
+export VLLM_ATTENTION_BACKEND=XFORMERS
+```
+之后运行（将.sh里的model_path修改为您的Llama-3.1-70B-Instruct
+的模型路径）：
+```bash
+# on the master node, run
+bash scripts/node_1/qwen_math_1.5b/run_sft_data_generation.sh
+```
+之后运行以下命令来将sft数据分割成train和test：
+```bash
+# split SFT data into train/test splits
+python data_preprocess/split_parquet.py \
+    --input ./data/eurus2_sft_math/llama70b_sft_data_generation.parquet
+```
+
+#### 产生用于sft LRM的数据
+运行以下代码，先产生sft的数据：
+先运行以下命令：
+```bash
+# export on all nodes before starting ray
+export VLLM_ATTENTION_BACKEND=XFORMERS
+```
+之后运行（将.sh中的model_path替换为您的DeepSeek-R1-Distill-Llama-70B模型路径）：
+```bash
+# on the master node, run
+bash scripts/node_1/deepscaler/run_sft_data_generation.sh
+```
+之后运行以下命令来将sft数据分割成train和test：
+```bash
+# split SFT data into train/test splits
+python data_preprocess/split_parquet.py \
+--input ./data/eurus2_sft_math/deepseek_r1_distill_llama70b_sft_data_generation.parquet
+```
+
+#### SFT训练 1.5B LLM
+将.sh中的model_path替换成您的Qwen2.5-Math-1.5B模型的路径：
+```bash
+# on node i=0,1,2,3, run
+bash scripts/node_1/qwen_math_1.5b/run_sft_generator.sh
+```
+
+#### SFT训练 7B LLM
+将.sh中的model_path替换成您的Qwen2.5-Math-7B模型的路径：
+```bash
+# on node i=0,1,2,3, run
+bash scripts/node_1/qwen_math_7b/run_sft_generator.sh
+```
+
+#### SFT训练LRM
+将.sh中的model_path替换为您的DeepScaleR-1.5B-Preview模型路径：
+```bash
+# on node i=0,1,2,3, run
+bash scripts/node_1/deepscaler/run_sft_generator.sh
+```
+
+### Stage2 – RL训练LLM
+#### RL训练-1.5B
+运行
+```bash
+# similar to above
+export VLLM_ATTENTION_BACKEND=XFORMERS
+```
+之后运行以下命令，需要将.sh中的VERIFIER_MODEL_PATH替换为您的Qwen2.5-7B的模型路径：
+```bash
+# on the master node, run
+bash scripts/node_1/qwen_math_1.5b/run_rl_tango.sh ./checkpoints/RL-Tango/sft-generator-qwen-math-1.5b
+```
+
+#### RL训练-7B
+还是首先运行
+```bash
+# similar to above
+export VLLM_ATTENTION_BACKEND=XFORMERS
+```
+之后运行以下命令，需要将.sh中的VERIFIER_MODEL_PATH替换为您的Qwen2.5-7B的模型路径：
+```bash
+# on the master node, run
+bash scripts/node_1/qwen_math_7b/run_rl_tango.sh ./checkpoints/RL-Tango/sft-generator-qwen-math-7b
+```
+
+## 训练（多节点）
 ### Stage1 – SFT训练LLM和LRM
 #### 产生用于sft LLM的数据
 运行以下代码，先产生sft的数据：
@@ -88,7 +175,7 @@ ray start --address ${MASTER_NODE_ADDRESS}:6379
 的模型路径）：
 ```bash
 # on the master node, run
-bash scripts/qwen_math_1.5b/run_sft_data_generation.sh
+bash scripts/node_4/qwen_math_1.5b/run_sft_data_generation.sh
 ```
 之后在主节点上运行以下命令来将sft数据分割成train和test：
 ```bash
@@ -118,7 +205,7 @@ ray start --address ${MASTER_NODE_ADDRESS}:6379
 之后在主节点上运行（将.sh中的model_path替换为您的DeepSeek-R1-Distill-Llama-70B模型路径）：
 ```bash
 # on the master node, run
-bash scripts/deepscaler/run_sft_data_generation.sh
+bash scripts/node_4/deepscaler/run_sft_data_generation.sh
 ```
 之后在主节点上运行以下命令来将sft数据分割成train和test：
 ```bash
@@ -131,7 +218,7 @@ python data_preprocess/split_parquet.py \
 在每个节点启动一次，将${i}替换成从0开始的节点序号，将${MASTER_NODE_ADDRESS}替换成主节点的ip地址，将.sh中的model_path替换成您的Qwen2.5-Math-1.5B模型的路径：
 ```bash
 # on node i=0,1,2,3, run
-bash scripts/qwen_math_1.5b/run_sft_generator.sh --nnodes 4 \
+bash scripts/node_4/qwen_math_1.5b/run_sft_generator.sh --nnodes 4 \
 --node_rank ${i} --master_addr ${MASTER_NODE_ADDRESS}
 ```
 
@@ -139,7 +226,7 @@ bash scripts/qwen_math_1.5b/run_sft_generator.sh --nnodes 4 \
 在每个节点启动一次，将${i}替换成从0开始的节点序号，将${MASTER_NODE_ADDRESS}替换成主节点的ip地址，将.sh中的model_path替换成您的Qwen2.5-Math-7B模型的路径：
 ```bash
 # on node i=0,1,2,3, run
-bash scripts/qwen_math_7b/run_sft_generator.sh --nnodes 4 \
+bash scripts/node_4/qwen_math_7b/run_sft_generator.sh --nnodes 4 \
 --node_rank ${i} --master_addr ${MASTER_NODE_ADDRESS}
 ```
 
@@ -147,7 +234,7 @@ bash scripts/qwen_math_7b/run_sft_generator.sh --nnodes 4 \
 在每个节点启动一次，将${i}替换成从0开始的节点序号，将${MASTER_NODE_ADDRESS}替换成主节点的ip地址，将.sh中的model_path替换为您的DeepScaleR-1.5B-Preview模型路径：
 ```bash
 # on node i=0,1,2,3, run
-bash scripts/deepscaler/run_sft_generator.sh --nnodes 4 --node_rank ${i} \
+bash scripts/node_4/deepscaler/run_sft_generator.sh --nnodes 4 --node_rank ${i} \
     --master_addr ${MASTER_NODE_ADDRESS}
 ```
 
@@ -169,7 +256,7 @@ ray start --address ${MASTER_NODE_ADDRESS}:6379
 之后在主节点上运行以下命令，需要将.sh中的VERIFIER_MODEL_PATH替换为您的Qwen2.5-7B的模型路径：
 ```bash
 # on the master node, run
-bash scripts/qwen_math_1.5b/run_rl_tango.sh ./checkpoints/RL-Tango/sft-generator-qwen-math-1.5b
+bash scripts/node_4/qwen_math_1.5b/run_rl_tango.sh ./checkpoints/RL-Tango/sft-generator-qwen-math-1.5b
 ```
 
 #### RL训练-7B
@@ -189,5 +276,5 @@ ray start --address ${MASTER_NODE_ADDRESS}:6379
 之后在主节点上运行以下命令，需要将.sh中的VERIFIER_MODEL_PATH替换为您的Qwen2.5-7B的模型路径：
 ```bash
 # on the master node, run
-bash scripts/qwen_math_7b/run_rl_tango.sh ./checkpoints/RL-Tango/sft-generator-qwen-math-7b
+bash scripts/node_4/qwen_math_7b/run_rl_tango.sh ./checkpoints/RL-Tango/sft-generator-qwen-math-7b
 ```
