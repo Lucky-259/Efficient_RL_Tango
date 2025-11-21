@@ -3,7 +3,6 @@ import torch
 import uuid
 import re
 import math
-import json
 from enum import Enum
 import numpy as np
 from tqdm import tqdm
@@ -14,8 +13,6 @@ from verl.trainer.ppo.metric_utils import compute_data_metrics, compute_througho
 from verl.trainer.ppo import core_algos
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
-import verl.utils.torch_functional as verl_F
-from verl.utils.model import compute_position_id_with_mask
 import pandas as pd
 from typing import List
 from omegaconf import OmegaConf, open_dict
@@ -56,71 +53,7 @@ def get_alpha(
 
     return np.maximum(alpha_min, alpha_val)
 
-def add_tags(text, split_step_token_lst):
-    match_split = list(re.finditer(r'(Give your answer in \\boxed{}.)', text))
-    prompt_text = text[:match_split[0].end()]
-    response_text = text[match_split[0].end():].strip()
-
-    # add <think> if not exist, and add <step> after <think>
-    if "<think>" not in response_text:
-        response_text = "<think>\n<step>" + response_text
-    else:
-        response_text = re.sub(r'(<think>)', r'\1\n<step>', response_text, count=1)
-    
-    # add </think> if not exist, and add </step> behind </think>
-    if "</think>" in response_text:
-        response_text = re.sub(r'(</think>)', r'</step>\n\1', response_text, count=1)
-    elif "**Final Answer**" in response_text:
-        # if "**Final Answer**" exists, add </step></think> behind it
-        response_text = re.sub(r'(\*\*Final Answer\*\*)', r'</step>\n</think>\1', response_text, count=1)
-    else:
-        # if "**Final Answer**" not exists, add </step></think> after the last '\n\n'
-        match_two_endlines = list(re.finditer(r'(\n\n)', response_text))
-        if match_two_endlines:
-            response_text = response_text[:match_two_endlines[-1].end()] + "</step>\n</think>" + response_text[match_two_endlines[-1].end():]
-
-    # add <answer> after </think> if not exist, and add <step> after <answer>
-    if "<answer>" not in response_text:
-        response_text = re.sub(r'(</think>)', r'\1\n<answer>\n<step>', response_text, count=1)
-    else:
-        response_text = re.sub(r'(<answer>)', r'\1\n<step>', response_text, count=1)
-    
-    # if </answer> not exists, add </answer> at the end of response_text
-    if "</answer>" not in response_text:
-        response_text = response_text + "</step>\n</answer>"
-    else:
-        response_text = re.sub(r'(</answer>)', r'</step>\n\1', response_text, count=1)
-    
-    if split_step_token_lst == ['\n\n']:
-        match_think = list(re.finditer(r'(<think>\n<step>)', response_text))
-        match_slash_think = list(re.finditer(r'(</step>\n</think>)', response_text))
-        match_answer = list(re.finditer(r'(<answer>\n<step>)', response_text))
-        match_slash_answer = list(re.finditer(r'(</step>\n</answer>)', response_text))
-        assert match_think[0].end() < match_slash_think[0].start() < match_answer[0].end() < match_slash_answer[0].start()
-
-        response_text = "<answer>\n<step>" + response_text[match_answer[0].end():match_slash_answer[0].start()].strip() + response_text[match_slash_answer[0].start():]
-
-        response_text = re.sub(r'(\n\n)', r'</step>\1<step>', response_text)
-    else:
-        pattern = '|'.join([re.escape(token) for token in split_step_token_lst])
-        response_text = re.sub(f'({pattern})', r'</step>\n<step> \1', response_text)
-        match_think = list(re.finditer(r'(<think>\n<step>)', response_text))
-        if response_text[match_think[0].end():].strip().startswith("</step>\n<step>"):
-            response_text = response_text[:match_think[0].end()] + re.sub(r'(</step>\n<step>)', r'', response_text[match_think[0].end():], count=1)
-        match_answer = list(re.finditer(r'(<answer>\n<step>)', response_text))
-        if response_text[match_answer[0].end():].strip().startswith("</step>\n<step>"):
-            response_text = response_text[:match_answer[0].end()] + re.sub(r'(</step>\n<step>)', r'', response_text[match_answer[0].end():], count=1)
-        
-        response_text = response_text[match_answer[0].start():]
-
-    text = prompt_text + response_text
-    return {
-        "input_ids": text,
-        "prompts": prompt_text,
-        "responses": response_text
-    }
-
-class RLTangoTrainer(RayPPOTrainer):
+class RLEttsTrainer(RayPPOTrainer):
     """RLTango Trainer for co-evolving generator and verifier models with RL.
     Both the generator and verifier have their own complete RL training pipelines.
     - Generator is trained with feedback from the verifier (process reward) and the ground truth label (outcome reward).
@@ -518,12 +451,9 @@ class RLTangoTrainer(RayPPOTrainer):
 
     def _get_verifier_feedback(self, batch: DataProto):
         """Get feedback from the verifier"""
-
-        # calculate outcome-level correctness reward and format reward
-        ground_truth_correctness_reward = self.reward_fn_list[0](batch) # torch.Tensor(B=batch_size, L=seq_len)
-        format_reward = self.reward_fn_list[1](batch) # torch.Tensor(B, L)
+        ground_truth_correctness_reward = self.reward_fn_list[0](batch)
+        format_reward = self.reward_fn_list[1](batch)
         
-        # prepare input for verifier
         verification_input, temp_storage = self.verifier_actor_rollout_wg.prepare_verification_input(
             batch, self.tokenizer, n_rollouts=self.n_verifier_inference_rollouts
         )
@@ -531,29 +461,7 @@ class RLTangoTrainer(RayPPOTrainer):
         batch.meta_info['temp_storage']['G_format_reward'] = format_reward.sum(dim=-1) # (B,)
         
         verification_input.meta_info.update({'n': 1})
-        #print("---------------------------metaaa--------------------------")
-        #print(verification_input.meta_info)
-        verification_input.meta_info['stop'] = "</final_verification>"
         verification_output = self.verifier_actor_rollout_wg.generate_sequences(verification_input)
-
-        for i, response_ids_debug in enumerate(verification_output.batch['responses']):
-            prompt_text_debug = self.tokenizer.decode(verification_output.batch['prompts'][i], skip_special_tokens=True)
-            response_text_debug = self.tokenizer.decode(response_ids_debug, skip_special_tokens=True)
-            save_path = self.config.output.save_output_path
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            if os.path.exists(save_path):
-                with open(save_path, 'r', encoding='utf-8') as f:
-                    array = json.load(f)
-            else:
-                array = []
-            array.append({
-                "global_step": self.global_steps,
-                "prompts": prompt_text_debug,
-                "responses": response_text_debug
-            })
-            with open(save_path, 'w', encoding='utf-8') as f:
-                json.dump(array, f, ensure_ascii=False, indent=2)
-
         verification_output.batch['ground_truth_correctness'] = ground_truth_correctness_reward.sum(dim=-1).repeat_interleave(self.n_verifier_inference_rollouts) # (B*n_rollouts,)
         verification_results = self.verifier_actor_rollout_wg.extract_verification_result(
             verification_output, batch, n_rollouts=self.n_verifier_inference_rollouts
@@ -590,40 +498,6 @@ class RLTangoTrainer(RayPPOTrainer):
         # generate responses from generator
         with _timer('gen', timing_raw):
             gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
-
-            prompt_token_num = gen_batch_output.batch['prompts'].shape[-1]
-            response_token_num = gen_batch_output.batch['responses'].shape[-1]
-            for i in range(gen_batch_output.batch['input_ids'].shape[0]):
-                input_text = self.tokenizer.decode(gen_batch_output.batch['input_ids'][i], skip_special_tokens=True)
-                text_dict = add_tags(input_text, self.config.verifier.split_step_token_lst)
-                response_text = text_dict['responses']
-                responses, response_attention_mask = verl_F.tokenize_and_postprocess_data(prompt=response_text,
-                                                                         tokenizer=self.tokenizer,
-                                                                         max_length=response_token_num,
-                                                                         pad_token_id=self.tokenizer.pad_token_id,
-                                                                         left_pad=False,
-                                                                         truncation='right')
-            
-                gen_batch_output.batch['responses'][i] = responses[0]
-                assert torch.equal(gen_batch_output.batch['prompts'][i], gen_batch_output.batch['input_ids'][i][:prompt_token_num])
-                input_ids = torch.cat([gen_batch_output.batch['prompts'][i], responses[0]], dim=0)
-                gen_batch_output.batch['input_ids'][i] = input_ids
-                attention_mask = torch.cat([gen_batch_output.batch['attention_mask'][i][:prompt_token_num], response_attention_mask[0]], dim=0)
-                gen_batch_output.batch['attention_mask'][i] = attention_mask
-
-                if 'multi_modal_inputs' in gen_batch_output.non_tensor_batch.keys():
-                    from verl.models.transformers.qwen2_vl import get_rope_index
-                    image_inputs = self.processor.image_processor(gen_batch_output.non_tensor_batch['multi_modal_data']['image'], return_tensors='pt')
-                    image_grid_thw = image_inputs['image_grid_thw']
-                    position_ids = get_rope_index(
-                        self.processor,
-                        input_ids=input_ids[0],
-                        image_grid_thw=image_grid_thw,
-                        attention_mask=attention_mask[0],
-                    )  # (3, seq_len)
-                else:
-                    position_ids = compute_position_id_with_mask(attention_mask)
-                gen_batch_output.batch['position_ids'][i] = position_ids
         
         # add generation to original batch
         with _timer('combine_batch', timing_raw):
@@ -822,39 +696,6 @@ class RLTangoTrainer(RayPPOTrainer):
         with _timer('gen', timing_raw), torch.no_grad():
             gen_batch.meta_info = {'n': 1}
             gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
-
-            prompt_token_num = gen_batch_output.batch['prompts'].shape[-1]
-            response_token_num = gen_batch_output.batch['responses'].shape[-1]
-            for i in range(gen_batch_output.batch['input_ids'].shape[0]):
-                input_text = self.tokenizer.decode(gen_batch_output.batch['input_ids'][i], skip_special_tokens=True)
-                text_dict = add_tags(input_text, self.config.verifier.split_step_token_lst)
-                response_text = text_dict['responses']
-                responses, response_attention_mask = verl_F.tokenize_and_postprocess_data(prompt=response_text,
-                                                                         tokenizer=self.tokenizer,
-                                                                         max_length=response_token_num,
-                                                                         pad_token_id=self.tokenizer.pad_token_id,
-                                                                         left_pad=False,
-                                                                         truncation='right')
-                gen_batch_output.batch['responses'][i] = responses[0]
-                assert torch.equal(gen_batch_output.batch['prompts'][i], gen_batch_output.batch['input_ids'][i][:prompt_token_num])
-                input_ids = torch.cat([gen_batch_output.batch['prompts'][i], responses[0]], dim=0)
-                gen_batch_output.batch['input_ids'][i] = input_ids
-                attention_mask = torch.cat([gen_batch_output.batch['attention_mask'][i][:prompt_token_num], response_attention_mask[0]], dim=0)
-                gen_batch_output.batch['attention_mask'][i] = attention_mask
-
-                if 'multi_modal_inputs' in gen_batch_output.non_tensor_batch.keys():
-                    from verl.models.transformers.qwen2_vl import get_rope_index
-                    image_inputs = self.processor.image_processor(gen_batch_output.non_tensor_batch['multi_modal_data']['image'], return_tensors='pt')
-                    image_grid_thw = image_inputs['image_grid_thw']
-                    position_ids = get_rope_index(
-                        self.processor,
-                        input_ids=input_ids[0],
-                        image_grid_thw=image_grid_thw,
-                        attention_mask=attention_mask[0],
-                    )  # (3, seq_len)
-                else:
-                    position_ids = compute_position_id_with_mask(attention_mask)
-                gen_batch_output.batch['position_ids'][i] = position_ids
            
         # add generation to original batch
         with _timer('combine_gen_batch', timing_raw):
@@ -878,9 +719,6 @@ class RLTangoTrainer(RayPPOTrainer):
             verifier_gen_batch = verifier_batch.pop(
                 batch_keys=['input_ids', 'attention_mask', 'position_ids'],
             )
-            verifier_gen_batch.meta_info['stop'] = "</final_verification>"
-            #print("----------------------metaaa------------------------")
-            #print(verifier_gen_batch.meta_info)
             verifier_gen_output = self.verifier_actor_rollout_wg.generate_sequences(verifier_gen_batch)
             
         # add verifier's generation to original batch

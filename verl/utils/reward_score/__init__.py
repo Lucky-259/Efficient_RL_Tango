@@ -21,7 +21,7 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
     elif data_source in ['lighteval/MATH', 'DigitalLearningGmbH/MATH-lighteval']:
         from . import math
         res = math.compute_score(solution_str, ground_truth)
-    elif data_source in ['MATH500', 'AMC2023', 'AIME2024', 'AIME2025', 'OlympiadBench', 'Eurus-2-RL-Data']:
+    elif data_source in ['MATH500', 'AMC2023', 'AIME2024', 'AIME2025', 'OlympiadBench', 'Eurus-2-RL-Data', 'DeepMath-103K']:
         from . import math_verify
         res = math_verify.compute_score(solution_str, ground_truth)
     elif data_source in ['CRUXEval']:

@@ -68,7 +68,7 @@ def format_compute_score(data_source, solution_str, ground_truth, extra_info=Non
         res = 0.0
     elif data_source in ['lighteval/MATH', 'DigitalLearningGmbH/MATH-lighteval']:
         raise NotImplementedError
-    elif data_source in ['MATH500', 'AIME2024', 'AIME2025', 'AMC2023', 'OlympiadBench', 'BGQA', 'CRUXEval', 'StrategyQA', 'TableBench', 'Eurus-2-RL-Data']:
+    elif data_source in ['MATH500', 'AIME2024', 'AIME2025', 'AMC2023', 'OlympiadBench', 'BGQA', 'CRUXEval', 'StrategyQA', 'TableBench', 'Eurus-2-RL-Data', 'DeepMath-103K']:
         res = generator_format_reward(solution_str)
     else:
         raise NotImplementedError

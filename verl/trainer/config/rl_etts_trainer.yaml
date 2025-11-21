@@ -9,7 +9,6 @@ verifier:
   enable: true
   trainable: true
   hybrid_engine: true
-  split_step_token_lst: ["\n\n"]
   
   model:
     path: ~/models/deepseek-llm-7b-chat   # Match generator by default
@@ -192,7 +191,4 @@ reward_model:
   ulysses_sequence_parallel_size: 1 # sp size
   use_dynamic_bsz: ${critic.use_dynamic_bsz}
   forward_max_token_len_per_gpu: ${critic.forward_max_token_len_per_gpu}
-  reward_manager: naive
-
-output:
-  save_output_path: "verification_examples.json"
+  reward_manager: etts

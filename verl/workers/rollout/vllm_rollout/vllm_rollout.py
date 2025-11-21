@@ -183,6 +183,7 @@ class vLLMRollout(BaseRollout):
         do_sample = prompts.meta_info.get('do_sample', True)
         is_validate = prompts.meta_info.get('validate', False)
         n = prompts.meta_info.get('n', -1)
+        stop = prompts.meta_info.get('stop', '')
         if not do_sample:
             kwargs = {
                 'best_of': 1,
@@ -203,6 +204,11 @@ class vLLMRollout(BaseRollout):
         elif n != -1:
             kwargs = {
                 'n': n
+            }
+        elif stop != '':
+            kwargs = {
+                'stop': stop,
+                'include_stop_str_in_output': True
             }
 
         # users can customize different sampling_params at different run

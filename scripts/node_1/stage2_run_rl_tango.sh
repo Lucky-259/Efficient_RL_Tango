@@ -10,14 +10,14 @@ fi
 
 # Create a log directory with a timestamp
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-LOG_DIR=./logs/run_qwen_math_1.5b_${TIMESTAMP}
+LOG_DIR=./logs/stage2_${TIMESTAMP}
 mkdir -p $LOG_DIR
 
 export VERL_DEBUG_LEVEL=DEBUG   # Set the debug level to "DEBUG"
-export VERL_LOG_FILE=$LOG_DIR/rltango_training_qwen_math_1.5b.log  # Configure the log file path
+export VERL_LOG_FILE=$LOG_DIR/stage2.log  # Configure the log file path
 export PYTHONUNBUFFERED=1   # Force Python output to be unbuffered for real-time display
 
-train_files="['./data/deepmath_103k_rl_math/train.parquet']"
+train_files="['./data/deepmath_103k_rl_math/train_hard.parquet']"
 
 test_root_path=./data/eval_benchmarks
 test_data_sources=(
@@ -46,7 +46,7 @@ done
 test_files="$test_files]"
 
 GENERATOR_MODEL_PATH=$1
-VERIFIER_MODEL_PATH=${your_base_models_path}/Qwen2.5-7B
+VERIFIER_MODEL_PATH=${your_base_models_path}/Qwen2.5-7B-Instruct
 
 VERIFIER_ENABLE=True
 VERIFIER_TRAINABLE=True
@@ -55,7 +55,7 @@ VERIFIER_TRAINABLE=True
 ADV_ESTIMATOR=grpo
 if [ "$ADV_ESTIMATOR" = "grpo" -o "$ADV_ESTIMATOR" = "rloo" ]; then
     # GRPO/RLOO settings
-    ROLLOUT_N=5
+    ROLLOUT_N=8
     USE_KL_LOSS=True
     KL_LOSS_COEF=0.001
     KL_LOSS_TYPE=low_var_kl
@@ -69,7 +69,7 @@ if [ "$ADV_ESTIMATOR" = "grpo" -o "$ADV_ESTIMATOR" = "rloo" ]; then
     ALPHA_START=0.1
 elif [ "$ADV_ESTIMATOR" = "reinforce_plus_plus" ]; then
     # Reinforce++ setting
-    ROLLOUT_N=5
+    ROLLOUT_N=8
     USE_KL_LOSS=True
     KL_LOSS_COEF=0.001
     KL_LOSS_TYPE=mse
@@ -88,7 +88,7 @@ N_GPUS_PER_NODE=8
 TRAIN_BATCH_SIZE=256
 ENABLE_GRAD_CHECKPOINTING=True
 USE_REMOVE_PADDING=True
-MAX_NUM_BATCHED_TOKENS=8192
+MAX_NUM_BATCHED_TOKENS=32768
 APPLY_CHAT_TEMPLATE=False
 VAL_BEFORE_TRAIN=True
 
@@ -107,21 +107,21 @@ VERIFIER_CRITIC_LR_WARMUP_STEPS_RATIO=0.0
 #GENERATOR_MAX_RESPONSE_LENGTH=2048
 #VERIFIER_MAX_PROMPT_LENGTH=4096
 #VERIFIER_MAX_RESPONSE_LENGTH=4096
-GENERATOR_MAX_PROMPT_LENGTH=16000
-GENERATOR_MAX_RESPONSE_LENGTH=16000
-VERIFIER_MAX_PROMPT_LENGTH=16000
-VERIFIER_MAX_RESPONSE_LENGTH=16000
+GENERATOR_MAX_PROMPT_LENGTH=16384
+GENERATOR_MAX_RESPONSE_LENGTH=16384
+VERIFIER_MAX_PROMPT_LENGTH=32768
+VERIFIER_MAX_RESPONSE_LENGTH=32768
 
 TOTAL_EPOCHS=15  # deprecated
-TOTAL_TRAINING_STEPS=440
+TOTAL_TRAINING_STEPS=200
 SAVE_FREQ=50
 TEST_FREQ=10
 CRITIC_WARMUP=0
 VERIFIER_CRITIC_WARMUP=0
-N_GENERATOR_STEPS=3
-N_VERIFIER_STEPS=1
+N_GENERATOR_STEPS=1
+N_VERIFIER_STEPS=3
 GENERATOR_WARMUP_STEPS=0
-VERIFIER_WARMUP_STEPS=40
+VERIFIER_WARMUP_STEPS=0
 N_VERIFIER_INFERENCE_ROLLOUTS=1
 VERIFIER_TEMPERATURE=1.0
 
@@ -139,8 +139,8 @@ VERIFIER_LABEL_EMA_DECAY=0.8    # Use EMA to reduce label noise
 REWEIGHT_VERIFIER_REWARDS=True  # Reweight the rewards given by the verifier
 REWEIGHT_METHOD='sqrt_inverse'  # Reweighting algorithm is the square root inverse method
 
-PROJECT_NAME='RL-Tango'
-EXPERIMENT_NAME='rl-tango-training-qwen-math-1.5b'
+PROJECT_NAME='RL-Tango-Stage2'
+EXPERIMENT_NAME='rl-tango-training'
 
 # Environment settings
 export VLLM_ATTENTION_BACKEND=XFORMERS
@@ -175,6 +175,7 @@ python3 -m verl.trainer.main_rl_tango \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.gpu_memory_utilization=$GPU_MEMORY_UTILIZATION \
     actor_rollout_ref.rollout.max_num_batched_tokens=$MAX_NUM_BATCHED_TOKENS \
+    actor_rollout_ref.rollout.max_model_len=16384 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=$LOG_PROB_MICRO_BATCH_SIZE_PER_GPU \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     actor_rollout_ref.rollout.n=$ROLLOUT_N \
@@ -216,7 +217,8 @@ python3 -m verl.trainer.main_rl_tango \
     verifier.rollout.prompt_length=$VERIFIER_MAX_PROMPT_LENGTH \
     verifier.rollout.response_length=$VERIFIER_MAX_RESPONSE_LENGTH \
     verifier.rollout.gpu_memory_utilization=$GPU_MEMORY_UTILIZATION \
-    verifier.rollout.max_num_batched_tokens=12800 \
+    verifier.rollout.max_num_batched_tokens=32768 \
+    verifier.rollout.max_model_len=16384 \
     verifier.rollout.n_verifier_inference_rollouts=$N_VERIFIER_INFERENCE_ROLLOUTS \
     verifier.rollout.temperature=$VERIFIER_TEMPERATURE \
     verifier.ref.log_prob_micro_batch_size_per_gpu=$LOG_PROB_MICRO_BATCH_SIZE_PER_GPU \
