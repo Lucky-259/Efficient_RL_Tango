@@ -1,4 +1,5 @@
 
+*.whl
 **/*.pt
 **/checkpoints
 **/data
