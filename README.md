@@ -54,10 +54,10 @@ python data_preprocess/prepare_eval_benchmarks.py
 # similar to above
 export VLLM_ATTENTION_BACKEND=XFORMERS
 ```
-之后运行以下命令，需要将.sh中的VERIFIER_MODEL_PATH替换为您的Qwen2.5-7B-Instruct的模型路径，将${your_DeepSeek-R1-Distill-Qwen-1.5B_model_path}替换为您下载的DeepSeek-R1-Distill-Qwen-1.5B的模型路径：
+之后运行以下命令，需要将${your_DeepSeek-R1-Distill-Qwen-1.5B_model_path}替换为您下载的DeepSeek-R1-Distill-Qwen-1.5B的模型路径，将${your_Qwen2.5-7B-Instruct_model_path}替换为您的Qwen2.5-7B-Instruct的模型路径：
 ```bash
 # on the master node, run
-bash scripts/node_1/stage1_run_rl_tango.sh ${your_DeepSeek-R1-Distill-Qwen-1.5B_model_path}
+bash scripts/node_1/stage1_run_rl_tango.sh ${your_DeepSeek-R1-Distill-Qwen-1.5B_model_path} ${your_Qwen2.5-7B-Instruct_model_path}
 ```
 
 ### Stage2
@@ -66,10 +66,10 @@ bash scripts/node_1/stage1_run_rl_tango.sh ${your_DeepSeek-R1-Distill-Qwen-1.5B_
 # similar to above
 export VLLM_ATTENTION_BACKEND=XFORMERS
 ```
-之后运行以下命令，需要将.sh中的VERIFIER_MODEL_PATH替换为您的Qwen2.5-7B-Instruct的模型路径，将${your_stage1_model_path}替换为您stage1训练好的模型路径（选择./checkpoints/RL-Tango-Stage1/rl-tango-training文件夹中最后一次保存的模型路径）：
+之后运行以下命令，需要将${your_stage1_actor_model_path}替换为您stage1训练好的actor模型路径（选择./checkpoints/RL-Tango-Stage1/rl-tango-training文件夹中最后一次保存的模型文件里面的actor文件夹的路径），将${your_stage1_verifier_model_path}替换为您stage1训练好的verifier模型路径（选择./checkpoints/RL-Tango-Stage1/rl-tango-training文件夹中最后一次保存的模型文件里面的verifier_actor文件夹的路径）：
 ```bash
 # on the master node, run
-bash scripts/node_1/stage2_run_rl_tango.sh ${your_stage1_model_path}
+bash scripts/node_1/stage2_run_rl_tango.sh ${your_stage1_actor_model_path} ${your_stage1_verifier_model_path}
 ```
 
 ## 训练（多节点）
@@ -87,10 +87,10 @@ ray start --head
 ```bash
 ray start --address ${MASTER_NODE_ADDRESS}:6379
 ```
-之后在主节点上运行以下命令，需要将.sh中的VERIFIER_MODEL_PATH替换为您的Qwen2.5-7B-Instruct的模型路径，将${your_DeepSeek-R1-Distill-Qwen-1.5B_model_path}替换为您下载的DeepSeek-R1-Distill-Qwen-1.5B的模型路径：
+之后在主节点上运行以下命令，需要将${your_DeepSeek-R1-Distill-Qwen-1.5B_model_path}替换为您下载的DeepSeek-R1-Distill-Qwen-1.5B的模型路径，将${your_Qwen2.5-7B-Instruct_model_path}替换为您的Qwen2.5-7B-Instruct的模型路径：
 ```bash
 # on the master node, run
-bash scripts/node_4/stage1_run_rl_tango.sh ${your_DeepSeek-R1-Distill-Qwen-1.5B_model_path}
+bash scripts/node_4/stage1_run_rl_tango.sh ${your_DeepSeek-R1-Distill-Qwen-1.5B_model_path} ${your_Qwen2.5-7B-Instruct_model_path}
 ```
 
 ### Stage2 – RL训练LLM
@@ -107,8 +107,8 @@ ray start --head
 ```bash
 ray start --address ${MASTER_NODE_ADDRESS}:6379
 ```
-之后在主节点上运行以下命令，需要将.sh中的VERIFIER_MODEL_PATH替换为您的Qwen2.5-7B-Instruct的模型路径，将${your_stage1_model_path}替换为您stage1训练好的模型路径（选择./checkpoints/RL-Tango-Stage1/rl-tango-training文件夹中最后一次保存的模型路径）：
+之后在主节点上运行以下命令，需要将${your_stage1_actor_model_path}替换为您stage1训练好的模型路径（选择./checkpoints/RL-Tango-Stage1/rl-tango-training文件夹中最后一次保存的模型文件里面的actor文件夹的路径），将${your_stage1_verifier_model_path}替换为您stage1训练好的verifier模型路径（选择./checkpoints/RL-Tango-Stage1/rl-tango-training文件夹中最后一次保存的模型文件里面的verifier_actor文件夹的路径）：
 ```bash
 # on the master node, run
-bash scripts/node_4/stage2_run_rl_tango.sh ${your_stage1_model_path}
+bash scripts/node_4/stage2_run_rl_tango.sh ${your_stage1_actor_model_path} ${your_stage1_verifier_model_path}
 ```

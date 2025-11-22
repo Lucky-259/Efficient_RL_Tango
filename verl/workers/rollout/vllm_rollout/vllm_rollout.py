@@ -205,11 +205,12 @@ class vLLMRollout(BaseRollout):
             kwargs = {
                 'n': n
             }
-        elif stop != '':
-            kwargs = {
+        if stop != '':
+            kwargs.update({
                 'stop': stop,
-                'include_stop_str_in_output': True
-            }
+                'include_stop_str_in_output': True,
+                'detokenize': True
+            })
 
         # users can customize different sampling_params at different run
         with self.update_sampling_params(**kwargs):

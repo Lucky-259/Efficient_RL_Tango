@@ -57,7 +57,7 @@ def get_alpha(
     return np.maximum(alpha_min, alpha_val)
 
 def add_tags(text, split_step_token_lst):
-    match_split = list(re.finditer(r'(Give your answer in \\boxed{}.)', text))
+    match_split = list(re.finditer(r'(Please reason step by step, and put your final answer within \\boxed{}.<think>\n)', text))
     prompt_text = text[:match_split[0].end()]
     response_text = text[match_split[0].end():].strip()
 
@@ -531,8 +531,6 @@ class RLTangoTrainer(RayPPOTrainer):
         batch.meta_info['temp_storage']['G_format_reward'] = format_reward.sum(dim=-1) # (B,)
         
         verification_input.meta_info.update({'n': 1})
-        #print("---------------------------metaaa--------------------------")
-        #print(verification_input.meta_info)
         verification_input.meta_info['stop'] = "</final_verification>"
         verification_output = self.verifier_actor_rollout_wg.generate_sequences(verification_input)
 
@@ -540,7 +538,6 @@ class RLTangoTrainer(RayPPOTrainer):
             prompt_text_debug = self.tokenizer.decode(verification_output.batch['prompts'][i], skip_special_tokens=True)
             response_text_debug = self.tokenizer.decode(response_ids_debug, skip_special_tokens=True)
             save_path = self.config.output.save_output_path
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
             if os.path.exists(save_path):
                 with open(save_path, 'r', encoding='utf-8') as f:
                     array = json.load(f)
@@ -879,8 +876,6 @@ class RLTangoTrainer(RayPPOTrainer):
                 batch_keys=['input_ids', 'attention_mask', 'position_ids'],
             )
             verifier_gen_batch.meta_info['stop'] = "</final_verification>"
-            #print("----------------------metaaa------------------------")
-            #print(verifier_gen_batch.meta_info)
             verifier_gen_output = self.verifier_actor_rollout_wg.generate_sequences(verifier_gen_batch)
             
         # add verifier's generation to original batch
